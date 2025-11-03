@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel • Alertas e Tarefas</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <div class="title">Painel</div>
+        <div class="small">Emitir alertas e revisar tarefas</div>
+      </div>
+      <div class="top-right">
+        <div>Usuário: <b>{{ user.username }}</b> ({{ user.role }})</div>
+        <div class="top-links">
+          <a href="{{ url_for('calendar_view') }}">Calendário</a>
+          <a href="{{ url_for('logout') }}">Sair</a>
+        </div>
+        <button id="toggleDash" class="btn-theme"><span class="icon">🌙</span> <span class="label">Black</span></button>
+      </div>
+    </div>
+
+    <main style="display:grid;grid-template-columns:380px 1fr;gap:24px;margin-top:16px;">
+      <section>
+        <div class="card">
+          <h3 style="margin-top:0">Emitir Alerta Manual</h3>
+          <form method="post" action="{{ url_for('emit_alert') }}">
+            <label>Atribuir a</label>
+            <select name="assigned_to_id" required>
+              {% for u in users %}<option value="{{ u.id }}">{{ u.username }}</option>{% endfor %}
+            </select>
+            <label style="margin-top:10px;">Título do alerta</label>
+            <input name="title" placeholder="Ex.: Reunião agora" required />
+            <label style="margin-top:10px;">Mensagem (opcional)</label>
+            <textarea name="description" placeholder="Detalhes do alerta"></textarea>
+            <div style="height:12px"></div>
+            <button class="btn" type="submit">Emitir alerta</button>
+          </form>
+        </div>
+      </section>
+
+      <section>
+        <div class="card">
+          <h3 style="margin-top:0">Tarefas recentes</h3>
+          <div class="table-wrap">
+            <table>
+              <tr>
+                <th>ID</th><th>Título</th><th>Atribuído</th><th>Status</th><th>Vencimento</th>
+              </tr>
+              {% for t in tasks %}
+              <tr>
+                <td>#{{ t.id }}</td>
+                <td>{{ t.title }}</td>
+                <td>{{ t.assigned_to.username if t.assigned_to else '-' }}</td>
+                <td><span class="pill">{{ t.status }}</span></td>
+                <td class="small">{{ t.due_date or '-' }}</td>
+              </tr>
+              {% endfor %}
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>applyThemeToggle('toggleDash');</script>
+</body>
+</html>

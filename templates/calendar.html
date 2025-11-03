@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calendário de Tarefas</title>
+
+  <!-- FullCalendar 6.1.9 -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/locales-all.global.min.js"></script>
+
+  <!-- Tema do seu projeto -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+  <script src="{{ url_for('static', filename='theme.js') }}"></script>
+
+  <style>
+    /* Pinte só o DOT conforme status (mantendo texto preto) */
+    .fc-event.pendente     { --fc-event-dot-color: #f44336 !important; } /* vermelho */
+    .fc-event.em_andamento { --fc-event-dot-color: #ff9800 !important; } /* laranja */
+    .fc-event.concluida    { --fc-event-dot-color: #4caf50 !important; } /* verde */
+
+    .fc-daygrid-event .fc-event-title,
+    .fc-daygrid-event .fc-event-time { color:#111 !important; }
+
+    .container{max-width:1160px;margin:24px auto 40px;padding:0 16px;}
+    .topbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      background:var(--surface);border:1px solid var(--stroke);border-radius:12px;padding:12px 16px;
+      box-shadow:0 10px 30px var(--shadow);}
+    .title{font-weight:700}
+    .top-right{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:.9rem}
+    .top-right b{color:var(--text)}
+    .top-links a{color:var(--muted);text-decoration:none;border:1px solid var(--stroke);padding:6px 10px;border-radius:10px}
+    .btn-theme{border:1px solid var(--stroke);background:var(--surface-2);color:var(--text);padding:8px 12px;border-radius:10px;font-weight:600;cursor:pointer}
+
+    #calendar{background:var(--surface);border:1px solid var(--stroke);border-radius:12px;box-shadow:0 10px 30px var(--shadow);padding:10px}
+
+    .legenda {
+      display:flex; gap:16px; justify-content:center; align-items:center;
+      margin-top:12px; flex-wrap:wrap;
+    }
+    .legenda-item { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--text); }
+    .cor { width:14px; height:14px; border-radius:4px; border:1px solid var(--stroke); }
+    .cor.vermelho { background-color:#f44336; }
+    .cor.laranja  { background-color:#ff9800; }
+    .cor.verde    { background-color:#4caf50; }
+
+    .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modal.card{width:min(520px,calc(100vw - 32px))}
+    .inline-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;}
+    .inline-row .checkbox{display:flex;align-items:center;gap:8px;}
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <div class="title">Calendário de Tarefas</div>
+        <div class="small">Clique em um dia para criar uma tarefa</div>
+      </div>
+      <div class="top-right">
+        <div class="small">
+          Usuário: <b>{{ user.username }}</b> ({{ user.role }})
+        </div>
+        <div class="top-links">
+          {% if is_admin %}
+            <a href="{{ url_for('dashboard') }}">Painel</a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}">Sair</a>
+        </div>
+        <button id="toggleCal" class="btn-theme">
+          <span class="icon">🌙</span> <span class="label">Black</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="calendar" class="card"></div>
+
+    <!-- Legenda -->
+    <div class="legenda card">
+      <div class="legenda-item"><span class="cor vermelho"></span> Pendente</div>
+      <div class="legenda-item"><span class="cor laranja"></span> Em andamento</div>
+      <div class="legenda-item"><span class="cor verde"></span> Concluída</div>
+    </div>
+  </div>
+
+  <!-- Modal de criação -->
+  <div id="backdrop" class="backdrop">
+    <div class="modal card">
+      <h3 style="margin-top:0">Criar tarefa</h3>
+      <form id="createForm">
+        <label>Título</label>
+        <input name="title" id="f_title" required />
+
+        <label>Descrição</label>
+        <textarea name="description" id="f_desc"></textarea>
+
+        {% if is_admin %}
+          <label>Atribuir a</label>
+          <select name="assigned_to_id" id="f_user" required>
+            <option value="">-- Selecionar --</option>
+            {% for u in users %}
+              <option value="{{ u.id }}">{{ u.username }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
+
+        <label>Status</label>
+        <select name="status" id="f_status">
+          <option value="pendente">Pendente</option>
+          <option value="em_andamento">Em andamento</option>
+          <option value="concluida">Concluída</option>
+        </select>
+
+        <label>Data e hora</label>
+        <input type="datetime-local" name="due_date" id="f_due" required />
+
+        <div class="inline-row">
+          <label class="checkbox">
+            <input type="checkbox" name="send_alert" value="1" checked>
+            Enviar alerta ao usuário ao criar
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+          <button type="button" class="btn-theme" id="cancelBtn">Cancelar</button>
+          <button type="submit" class="btn">Criar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    applyThemeToggle('toggleCal');
+
+    function toLocalInputValue(d) {
+      const p = n => (n < 10 ? "0"+n : ""+n);
+      return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    function openModal(day, hour=9, minute=0) {
+      let base;
+      if (day instanceof Date) {
+        base = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, minute, 0, 0);
+      } else if (typeof day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        const [y,m,d] = day.split("-").map(Number);
+        base = new Date(y, m-1, d, hour, minute, 0, 0);
+      } else if (typeof day === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(day)) {
+        const tmp = new Date(day);
+        base = new Date(tmp.getFullYear(), tmp.getMonth(), tmp.getDate(), tmp.getHours(), tmp.getMinutes(), 0, 0);
+      } else {
+        base = new Date(); base.setHours(hour, minute, 0, 0);
+      }
+
+      document.getElementById('f_due').value   = toLocalInputValue(base);
+      document.getElementById('f_title').value = "";
+      document.getElementById('f_desc').value  = "";
+      const fUser = document.getElementById('f_user'); if (fUser) fUser.value = "";
+      document.getElementById('f_status').value= "pendente";
+      document.getElementById('backdrop').style.display = "flex";
+      setTimeout(() => document.getElementById('f_title').focus(), 50);
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const el = document.getElementById('calendar');
+      const backdrop = document.getElementById('backdrop');
+      const form = document.getElementById('createForm');
+      const cancelBtn = document.getElementById('cancelBtn');
+
+      function closeModal(){ backdrop.style.display = "none"; }
+      cancelBtn.addEventListener('click', closeModal);
+      backdrop.addEventListener('click', (e)=>{ if (e.target === backdrop) closeModal(); });
+
+      const calendar = new FullCalendar.Calendar(el, {
+        locale: 'pt-br',
+        buttonText: { today: 'Hoje', month: 'Mês', week: 'Semana', day: 'Dia', list: 'Agenda' },
+        initialView: 'dayGridMonth',
+        timeZone: 'local',
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek' },
+        navLinks: true,
+        selectable: true,
+        editable: false,
+        eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
+
+        events: function(info, success, failure) {
+          const url = `/api/calendar_events?start=${info.startStr}&end=${info.endStr}`;
+          fetch(url, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+              const colored = data.map(ev => {
+                let cls = 'pendente';
+                if (ev.status === 'em_andamento') cls = 'em_andamento';
+                else if (ev.status === 'concluida') cls = 'concluida';
+                return { ...ev, classNames: [cls] };
+              });
+              success(colored);
+            })
+            .catch(err => failure(err));
+        },
+
+        eventClick: function(info) {
+          if (info.event.url) {
+            info.jsEvent.preventDefault();
+            window.location.href = info.event.url;
+          }
+        },
+
+        dateClick: function(info) { openModal(info.date, 9, 0); },
+        select: function(info){ openModal(info.start); }
+      });
+
+      calendar.render();
+
+      try {
+        const es = new EventSource('/api/stream?username={{ user.username|e }}');
+        es.addEventListener('task', () => calendar.refetchEvents());
+      } catch(e) {}
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fd = new FormData(form);
+        try {
+          const r = await fetch('{{ url_for("create_task") }}', { method: 'POST', body: fd });
+          if (!r.ok) throw new Error('Falha ao criar tarefa');
+          closeModal();
+          calendar.refetchEvents();
+        } catch (err) {
+          alert('Não foi possível criar a tarefa.');
+          console.error(err);
+        }
+      });
+    });
+  </script>
+</body>
+</html>

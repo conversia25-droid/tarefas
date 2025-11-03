@@ -1,5 +1,5 @@
-# server_tasks.py – Painel/Tarefas com Calendário + SSE + APIs (tema light/black e topo corrigido)
-# Flask + SQLAlchemy (SQLite)
+# server_tasks.py – Painel/Tarefas com Calendário + SSE + APIs
+# Flask + SQLAlchemy (SQLite em /instance)
 
 import os
 import json
@@ -8,20 +8,24 @@ from collections import defaultdict
 from queue import Queue
 
 from flask import (
-    Flask, request, jsonify, render_template_string,
+    Flask, request, jsonify, render_template_string, render_template,
     redirect, url_for, session, abort, Response
 )
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # =============================
-# APP CONFIG
+# APP + DB (usa /instance)
 # =============================
-app = Flask(__name__)
-app.secret_key = os.environ.get("PANEL_SECRET", "trocar-isso-em-producao")
+app = Flask(__name__, instance_relative_config=True)
+os.makedirs(app.instance_path, exist_ok=True)
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///painel_tarefas.db"
+DB_FILENAME = os.environ.get("PANEL_DB_FILENAME", "painel_tarefas.db")
+db_path = os.path.join(app.instance_path, DB_FILENAME)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+app.secret_key = os.environ.get("PANEL_SECRET", "trocar-isso-em-producao")
 db = SQLAlchemy(app)
 
 # =============================
@@ -62,7 +66,7 @@ class TaskLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task_id = db.Column(db.Integer, db.ForeignKey("tasks.id"), nullable=False)
     host_id = db.Column(db.String(100), nullable=False)
-    status = db.Column(db.String(20), default="pending") # observation_web, observation, done_manual, done_api
+    status = db.Column(db.String(20), default="pending") # observation_web, observation, done_*
     message = db.Column(db.Text, nullable=True)
     executed_at = db.Column(db.DateTime, default=datetime.datetime.utcnow)
 
@@ -173,10 +177,9 @@ def is_admin():
     return (u is not None and u.role == "admin")
 
 # =============================
-# TEMA (CSS/JS COMUNS)
+# TEMA BÁSICO (LOGIN/DASH/USER)
 # =============================
 THEME_CSS = """
-/* Temas: light (padrão) e black */
 :root[data-theme="light"]{
   --bg:#ffffff; --surface:#ffffff; --surface-2:#f7f8fa;
   --text:#111; --muted:#666; --stroke:#e8eaee; --shadow:rgba(0,0,0,.06);
@@ -211,43 +214,7 @@ th{background:var(--surface-2);color:var(--muted);font-weight:600;padding:10px 1
 td{padding:10px 12px;border-bottom:1px solid var(--stroke);vertical-align:top}
 .pill{background:var(--chip);color:var(--chip-text);padding:6px 8px;border-radius:8px;font-size:.8rem}
 .small{font-size:.8rem;color:var(--muted)}
-/* FullCalendar to follow theme */
 #calendar{background:var(--surface);border:1px solid var(--stroke);border-radius:12px;box-shadow:0 10px 30px var(--shadow);padding:10px}
-.fc .fc-toolbar-title{color:var(--text);font-weight:800}
-.fc-theme-standard .fc-scrollgrid, .fc-theme-standard td, .fc-theme-standard th{border-color:var(--stroke)}
-.fc .fc-button{border-radius:10px;border:1px solid var(--stroke);background:var(--surface-2);color:var(--text)}
-.fc .fc-button-primary:not(:disabled).fc-button-active, .fc .fc-button-primary:not(:disabled):active{
-  background:var(--surface);border-color:var(--stroke);color:var(--text)}
-.fc .fc-col-header-cell-cushion, .fc .fc-daygrid-day-number, .fc .fc-list-day-text, .fc .fc-list-day-side-text{color:var(--text)}
-.fc .fc-daygrid-event, .fc .fc-timegrid-event{background:var(--chip);color:var(--chip-text);border:1px solid var(--stroke)}
-
-/* ⚠️ Correção Final do FullCalendar (Foco no Ícone DOT) */
-.fc-event.pendente,
-.fc-event.em_andamento,
-.fc-event.concluida { 
-    background-color: var(--chip) !important;
-    border-color: var(--stroke) !important;
-}
-.fc-event.pendente { 
-    --fc-event-dot-color: #f44336 !important; /* Vermelho */
-    color: #f44336 !important;
-}
-.fc-event.em_andamento { 
-    --fc-event-dot-color: #ff9800 !important; /* Laranja */
-    color: #ff9800 !important;
-}
-.fc-event.concluida { 
-    --fc-event-dot-color: #4caf50 !important; /* Verde */
-    color: #4caf50 !important;
-}
-.fc-event.pendente .fc-event-title,
-.fc-event.em_andamento .fc-event-title,
-.fc-event.concluida .fc-event-title,
-.fc-event.pendente .fc-event-time,
-.fc-event.em_andamento .fc-event-time,
-.fc-event.concluida .fc-event-time {
-    color: var(--chip-text) !important; 
-}
 """
 
 THEME_JS = """
@@ -281,12 +248,12 @@ THEME_JS = """
 # =============================
 # LOGIN
 # =============================
-TPL_LOGIN = f"""<!DOCTYPE html>
+TPL_LOGIN = """<!DOCTYPE html>
 <html lang="pt-BR" data-theme="light"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Login • Painel de Tarefas</title>
-<style>{THEME_CSS}</style>
-{THEME_JS}
+<style>{{ theme_css|safe }}</style>
+{{ theme_js|safe }}
 </head>
 <body>
   <div class="container">
@@ -296,7 +263,7 @@ TPL_LOGIN = f"""<!DOCTYPE html>
     </div>
     <div class="card" style="max-width:420px;margin:20px auto;">
       <div class="small" style="margin-bottom:8px;">Use seu usuário e senha</div>
-      {{% if error %}}<div class="pill" style="background:#ffd6d6;color:#b10000;">{{{{error}}}}</div>{{% endif %}}
+      {% if error %}<div class="pill" style="background:#ffd6d6;color:#b10000;">{{error}}</div>{% endif %}
       <form method="post" style="margin-top:10px;">
         <label>Usuário</label><input name="username" autocomplete="username" />
         <label>Senha</label><input name="password" type="password" autocomplete="current-password" />
@@ -314,18 +281,15 @@ def login():
     if request.method == "POST":
         usr = request.form.get("username", "").strip()
         pwd = request.form.get("password", "").strip()
-        
-        # Correção de Login: Trata 'admin' separadamente e capitaliza outros
         search_username = usr.strip()
         if search_username.lower() != 'admin':
             search_username = search_username.capitalize()
-            
         u = User.query.filter_by(username=search_username).first()
         if u and u.check_password(pwd):
             session["user_id"] = u.id
             return redirect(url_for("calendar_view"))
-        return render_template_string(TPL_LOGIN, error="Login incorreto")
-    return render_template_string(TPL_LOGIN, error=None)
+        return render_template_string(TPL_LOGIN, error="Login incorreto", theme_css=THEME_CSS, theme_js=THEME_JS)
+    return render_template_string(TPL_LOGIN, error=None, theme_css=THEME_CSS, theme_js=THEME_JS)
 
 @app.route("/logout")
 def logout():
@@ -341,12 +305,12 @@ def home():
 # =============================
 # DASHBOARD (ADMIN)
 # =============================
-TPL_DASHBOARD = f"""<!DOCTYPE html>
+TPL_DASHBOARD = """<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Painel • Tarefas</title>
-<style>{THEME_CSS}</style>
-{THEME_JS}
+<style>{{ theme_css|safe }}</style>
+{{ theme_js|safe }}
 </head>
 <body>
   <div class="container">
@@ -356,10 +320,10 @@ TPL_DASHBOARD = f"""<!DOCTYPE html>
         <div class="small">Administre tarefas e atribuições</div>
       </div>
       <div class="top-right">
-        <div>Usuário: <b>{{{{user.username}}}}</b> ({{{{user.role}}}})</div>
+        <div>Usuário: <b>{{user.username}}</b> ({{user.role}})</div>
         <div class="top-links">
-          <a href="{{{{url_for('calendar_view')}}}}">Calendário</a>
-          <a href="{{{{url_for('logout')}}}}">Sair</a>
+          <a href="{{url_for('calendar_view')}}">Calendário</a>
+          <a href="{{url_for('logout')}}">Sair</a>
         </div>
         <button id="toggleDash" class="btn-theme"><span class="icon">🌙</span> <span class="label">Black</span></button>
       </div>
@@ -369,10 +333,10 @@ TPL_DASHBOARD = f"""<!DOCTYPE html>
       <section>
         <div class="card">
           <h3 style="margin-top:0">Emitir Alerta Manual</h3>
-          <form method="post" action="{{{{url_for('emit_alert')}}}}">
+          <form method="post" action="{{url_for('emit_alert')}}">
             <label>Atribuir a</label>
             <select name="assigned_to_id" required>
-              {{% for u in users %}}<option value="{{{{u.id}}}}">{{{{u.username}}}}</option>{{% endfor %}}
+              {% for u in users %}<option value="{{u.id}}">{{u.username}}</option>{% endfor %}
             </select>
             <label style="margin-top:10px;">Título do alerta</label>
             <input name="title" placeholder="Ex.: Reunião agora" required />
@@ -385,13 +349,13 @@ TPL_DASHBOARD = f"""<!DOCTYPE html>
 
         <div class="card" style="margin-top:16px;">
           <h3 style="margin-top:0">Criar nova tarefa</h3>
-          <form method="post" action="{{{{url_for('create_task')}}}}">
+          <form method="post" action="{{url_for('create_task')}}">
             <label>Título</label><input name="title" required />
             <label style="margin-top:10px;">Descrição</label><textarea name="description"></textarea>
             <label style="margin-top:10px;">Atribuir a</label>
             <select name="assigned_to_id">
               <option value="">-- (não atribuída) --</option>
-              {{% for u in users %}}<option value="{{{{u.id}}}}">{{{{u.username}}}}</option>{{% endfor %}}
+              {% for u in users %}<option value="{{u.id}}">{{u.username}}</option>{% endfor %}
             </select>
             <label style="margin-top:10px;">Status</label>
             <select name="status">
@@ -415,23 +379,23 @@ TPL_DASHBOARD = f"""<!DOCTYPE html>
               <tr>
                 <th>ID</th><th>Título</th><th>Descrição</th><th>Atribuído</th><th>Status</th><th>Vencimento</th><th>Criada</th><th></th>
               </tr>
-              {{% for t in tasks %}}
+              {% for t in tasks %}
               <tr>
-                <td>#{{{{t.id}}}}</td>
-                <td>{{{{t.title}}}}</td>
-                <td style="white-space:pre-wrap;">{{{{t.description or '-'}}}}</td>
-                <td>{{{{t.assigned_to.username if t.assigned_to else '-'}}}}</td>
-                <td><span class="pill">{{{{t.status}}}}</span></td>
-                <td class="small">{{{{t.due_date or '-'}}}}</td>
-                <td class="small">{{{{t.created_at}}}}</td>
+                <td>#{{t.id}}</td>
+                <td>{{t.title}}</td>
+                <td style="white-space:pre-wrap;">{{t.description or '-'}}</td>
+                <td>{{t.assigned_to.username if t.assigned_to else '-'}}</td>
+                <td><span class="pill">{{t.status}}</span></td>
+                <td class="small">{{t.due_date or '-'}}</td>
+                <td class="small">{{t.created_at}}</td>
                 <td>
-                  <a class="btn" href="{{{{url_for('edit_task_form', task_id=t.id)}}}}">Editar</a>
-                  <form method="post" action="{{{{url_for('delete_task', task_id=t.id)}}}}" style="display:inline" onsubmit="return confirm('Excluir tarefa #{{{{t.id}}}}?');">
+                  <a class="btn" href="{{url_for('edit_task_form', task_id=t.id)}}">Editar</a>
+                  <form method="post" action="{{url_for('delete_task', task_id=t.id)}}" style="display:inline" onsubmit="return confirm('Excluir tarefa #{{t.id}}?');">
                     <button class="btn" style="background:transparent;color:var(--text);border:1px solid var(--stroke)">Excluir</button>
                   </form>
                 </td>
               </tr>
-              {{% endfor %}}
+              {% endfor %}
             </table>
           </div>
         </div>
@@ -441,9 +405,9 @@ TPL_DASHBOARD = f"""<!DOCTYPE html>
           <div class="table-wrap" style="margin-top:12px;">
             <table>
               <tr><th>ID</th><th>Usuário</th><th>Role</th><th>Host</th></tr>
-              {{% for u in users %}}
-                <tr><td>{{{{u.id}}}}</td><td>{{{{u.username}}}}</td><td class="small">{{{{u.role}}}}</td><td class="small">{{{{u.host_id or '-'}}}}</td></tr>
-              {{% endfor %}}
+              {% for u in users %}
+                <tr><td>{{u.id}}</td><td>{{u.username}}</td><td class="small">{{u.role}}</td><td class="small">{{u.host_id or '-'}}</td></tr>
+              {% endfor %}
             </table>
           </div>
         </div>
@@ -462,9 +426,16 @@ def dashboard():
         return redirect(url_for("calendar_view"))
     tasks = Task.query.order_by(Task.created_at.desc()).all()
     users_list = User.query.order_by(User.username.asc()).all()
-    return render_template_string(TPL_DASHBOARD, user=current_user(), tasks=tasks, users=users_list)
+    return render_template_string(
+        TPL_DASHBOARD,
+        user=current_user(),
+        tasks=tasks,
+        users=users_list,
+        theme_css=THEME_CSS,
+        theme_js=THEME_JS
+    )
 
-# cria tarefa
+# cria tarefa (Painel/Calendário)
 @app.route("/task/create", methods=["POST"])
 def create_task():
     if not require_login():
@@ -474,6 +445,8 @@ def create_task():
     description = request.form.get("description", "").strip()
     status = request.form.get("status", "pendente").strip()
     due_date_raw = request.form.get("due_date", "").strip()
+
+    # admin pode escolher; usuário comum é atribuído a si mesmo
     assigned_to_id = request.form.get("assigned_to_id", "").strip() if is_admin() else str(u.id)
 
     if not title:
@@ -512,6 +485,8 @@ def create_task():
         })
     sse_publish("admin", {"type": "changed"})
 
+    # Se veio do calendário (modal com fetch), redirecionar de volta ao calendário
+    # (o frontend trata com fetch e refetchEvents; manter redirect funciona para submit tradicional)
     return redirect(url_for("calendar_view"))
 
 # ALERTA RÁPIDO DO ADMIN
@@ -561,48 +536,46 @@ def edit_task_form(task_id):
     if not t:
         abort(404)
     users_list = User.query.order_by(User.username.asc()).all() if is_admin() else []
-    
-    # Busca Logs da Tarefa para exibir o histórico
     task_logs = TaskLog.query.filter_by(task_id=task_id).order_by(TaskLog.executed_at.desc()).all()
     
-    TPL_EDIT = f"""<!DOCTYPE html>
+    TPL_EDIT = """<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Editar Tarefa</title>
-<style>{THEME_CSS}</style>
-{THEME_JS}
+<style>{{ theme_css|safe }}</style>
+{{ theme_js|safe }}
 </head>
 <body>
   <div class="container">
     <div class="topbar">
-      <div class="title">Editar tarefa #{{{{task.id}}}}</div>
+      <div class="title">Editar tarefa #{{task.id}}</div>
       <div class="top-right">
-        <a class="top-links" href="{{{{url_for('calendar_view')}}}}">← Voltar</a>
+        <a class="top-links" href="{{url_for('calendar_view')}}">← Voltar</a>
         <button id="toggleEdit" class="btn-theme"><span class="icon">🌙</span> <span class="label">Black</span></button>
       </div>
     </div>
 
     <div class="card" style="max-width:880px;margin:16px auto;">
-      <form method="post" action="{{{{url_for('edit_task', task_id=task.id)}}}}">
-        <label>Título</label><input name="title" value="{{{{task.title}}}}" required />
-        <label>Descrição</label><textarea name="description">{{{{task.description}}}}</textarea>
-        {{% if is_admin %}}
+      <form method="post" action="{{url_for('edit_task', task_id=task.id)}}">
+        <label>Título</label><input name="title" value="{{task.title}}" required />
+        <label>Descrição</label><textarea name="description">{{task.description}}</textarea>
+        {% if is_admin %}
         <label>Atribuir a</label>
         <select name="assigned_to_id">
           <option value="">-- (não atribuída) --</option>
-          {{% for u in users %}}
-            <option value="{{{{u.id}}}}" {{% if task.assigned_to and task.assigned_to.id == u.id %}}selected{{% endif %}}>{{{{u.username}}}}</option>
-          {{% endfor %}}
+          {% for u in users %}
+            <option value="{{u.id}}" {% if task.assigned_to and task.assigned_to.id == u.id %}selected{% endif %}>{{u.username}}</option>
+          {% endfor %}
         </select>
-        {{% endif %}}
+        {% endif %}
         <label>Status</label>
         <select name="status">
-          <option value="pendente" {{% if task.status=='pendente' %}}selected{{% endif %}}>Pendente</option>
-          <option value="em_andamento" {{% if task.status=='em_andamento' %}}selected{{% endif %}}>Em andamento</option>
-          <option value="concluida" {{% if task.status=='concluida' %}}selected{{% endif %}}>Concluída</option>
+          <option value="pendente" {% if task.status=='pendente' %}selected{% endif %}>Pendente</option>
+          <option value="em_andamento" {% if task.status=='em_andamento' %}selected{% endif %}>Em andamento</option>
+          <option value="concluida" {% if task.status=='concluida' %}selected{% endif %}>Concluída</option>
         </select>
         <label>Data de vencimento</label>
-        <input type="datetime-local" name="due_date" value="{{{{ (task.due_date.isoformat()[:16]) if task.due_date else '' }}}}" />
+        <input type="datetime-local" name="due_date" value="{{ (task.due_date.isoformat()[:16]) if task.due_date else '' }}" />
         
         <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn" type="submit">Salvar alterações</button>
@@ -612,7 +585,7 @@ def edit_task_form(task_id):
       <hr style="border-color:var(--stroke); margin: 20px 0;" />
       
       <h4 style="margin-top:0;">Adicionar Observação (Interação)</h4>
-      <form method="post" action="{{{{url_for('add_task_log', task_id=task.id)}}}}">
+      <form method="post" action="{{url_for('add_task_log', task_id=task.id)}}">
           <label>Comentário</label>
           <textarea name="message" required placeholder="Digite sua observação ou resposta..."></textarea>
           <div style="margin-top:10px; text-align:right;">
@@ -621,23 +594,31 @@ def edit_task_form(task_id):
       </form>
 
       <h4 style="margin-top:20px;">Histórico de Observações/Logs</h4>
-      {{% for log in task_logs %}}
+      {% for log in task_logs %}
           <div style="font-size:0.9rem; margin-bottom: 6px; border-left: 3px solid {{ 'var(--muted)' if log.status.startswith('observation') else 'var(--stroke)' }}; padding-left: 8px;">
-              <span class="small">{{{{ log.executed_at.strftime('%d/%m %H:%M') }}}} por <b>{{{{ log.host_id }}}}</b> ({{{{ log.status.replace('observation_web', 'Comentário Web').replace('observation', 'Comentário Ext.') }}}}):</span>
-              <div style="white-space: pre-wrap;">{{{{ log.message }}}}</div>
+              <span class="small">{{ log.executed_at.strftime('%d/%m %H:%M') }} por <b>{{ log.host_id }}</b> ({{ log.status.replace('observation_web', 'Comentário Web').replace('observation', 'Comentário Ext.') }}):</span>
+              <div style="white-space: pre-wrap;">{{ log.message }}</div>
           </div>
-      {{% endfor %}}
-      {{% if not task_logs %}}<div class="small">Sem histórico.</div>{{% endif %}}
+      {% endfor %}
+      {% if not task_logs %}<div class="small">Sem histórico.</div>{% endif %}
       
       <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
-          <a class="top-links" href="{{{{url_for('calendar_view')}}}}" style="display:inline-block;padding:10px 12px;border-radius:10px;border:1px solid var(--stroke);text-decoration:none;">← Voltar ao Calendário</a>
+          <a class="top-links" href="{{url_for('calendar_view')}}" style="display:inline-block;padding:10px 12px;border-radius:10px;border:1px solid var(--stroke);text-decoration:none;">← Voltar ao Calendário</a>
       </div>
     </div>
   </div>
   <script>applyThemeToggle('toggleEdit');</script>
 </body></html>
 """
-    return render_template_string(TPL_EDIT, task=t, users=users_list, is_admin=is_admin(), task_logs=task_logs)
+    return render_template_string(
+        TPL_EDIT,
+        task=t,
+        users=users_list,
+        is_admin=is_admin(),
+        task_logs=task_logs,
+        theme_css=THEME_CSS,
+        theme_js=THEME_JS
+    )
 
 @app.route("/task/<int:task_id>/edit", methods=["POST"])
 def edit_task(task_id):
@@ -690,7 +671,9 @@ def edit_task(task_id):
 
     return redirect(url_for("calendar_view"))
 
-# NOVO: Rota para Adicionar Observação/Log do Painel Web (Admin/Usuário)
+# =============================
+# OBSERVAÇÕES / LOGS
+# =============================
 @app.route("/task/<int:task_id>/add_log", methods=["POST"])
 def add_task_log(task_id):
     if not require_login():
@@ -702,20 +685,55 @@ def add_task_log(task_id):
     if not (t and message):
         return "Dados inválidos", 400
     
-    # Adicionar o log/observação
-    # Status 'observation_web' para diferenciar do log da extensão ('observation')
     lg = TaskLog(task_id=t.id, host_id=u.username, status="observation_web", message=message)
     db.session.add(lg)
     db.session.commit()
     
-    # Notificar o Admin e o Usuário Atribuído sobre a nova observação
     target_username = t.assigned_to.username if t.assigned_to else "admin"
     sse_publish(target_username, {"type": "new_observation", "task_id": t.id, "message": message, "user": u.username})
     if target_username != "admin":
         sse_publish("admin", {"type": "new_observation", "task_id": t.id, "message": message, "user": u.username})
 
-    # Redireciona de volta para a tela de edição para ver o log atualizado
+    payload = {
+        "id": t.id,
+        "title": f"[OBS] Nova interação na tarefa #{t.id}",
+        "description": (message or "")[:280],
+        "status": t.status,
+        "due_date": t.due_date.isoformat() if t.due_date else None
+    }
+    sse_publish(target_username, {"type": "alert", "task": payload})
+
     return redirect(url_for("edit_task_form", task_id=task_id))
+
+# API: lista logs por tarefa (para popup ver histórico)
+@app.route("/api/task_logs")
+def api_task_logs():
+    username = request.args.get("username", "").strip()
+    task_id = request.args.get("task_id", "").strip()
+    if not (username and task_id.isdigit()):
+        return jsonify({"error": "bad_request"}), 400
+
+    search_username = username if username.lower() == "admin" else username.capitalize()
+    user = User.query.filter_by(username=search_username).first()
+    if not user:
+        return jsonify({"error": "user_not_found"}), 404
+
+    t = db.session.get(Task, int(task_id))
+    if not t:
+        return jsonify({"error": "task_not_found"}), 404
+
+    if user.role != "admin" and (t.assigned_to_id != user.id):
+        return jsonify({"error": "forbidden"}), 403
+
+    logs = TaskLog.query.filter_by(task_id=t.id).order_by(TaskLog.executed_at.asc()).all()
+    return jsonify([{
+        "id": lg.id,
+        "task_id": lg.task_id,
+        "by": lg.host_id,
+        "status": lg.status,
+        "message": lg.message or "",
+        "at": lg.executed_at.isoformat()
+    } for lg in logs])
 
 @app.route("/task/<int:task_id>/delete", methods=["POST"])
 def delete_task(task_id):
@@ -742,7 +760,6 @@ def user_tasks():
         Task.assigned_to_id == u.id
     ).order_by(Task.created_at.desc()).all()
 
-    # Função auxiliar para formatar o status para exibição
     def format_status(status):
         if status == 'pendente':
             return 'Pendente'
@@ -752,12 +769,12 @@ def user_tasks():
             return 'Concluída'
         return status
 
-    TPL_USER = f"""<!DOCTYPE html>
+    TPL_USER = """<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Minhas Tarefas</title>
-<style>{THEME_CSS}</style>
-{THEME_JS}
+<style>{{ theme_css|safe }}</style>
+{{ theme_js|safe }}
 </head>
 <body>
   <div class="container">
@@ -767,40 +784,43 @@ def user_tasks():
         <div class="small">Marque como concluída quando terminar.</div>
       </div>
       <div class="top-right">
-        <div>Usuário: <b>{{{{user.username}}}}</b> ({{{{user.role}}}})</div>
-        <div class="top-links"><a href="{{{{url_for('logout')}}}}">Sair</a></div>
+        <div>Usuário: <b>{{user.username}}</b> ({{user.role}})</div>
+        <div class="top-links"><a href="{{url_for('logout')}}">Sair</a></div>
         <button id="toggleUser" class="btn-theme"><span class="icon">🌙</span> <span class="label">Black</span></button>
       </div>
     </div>
 
     <div class="card" style="max-width:920px;margin:16px auto;">
-      {{% if tasks %}}
-        {{% for t in tasks %}}
+      {% if tasks %}
+        {% for t in tasks %}
           <div class="card" style="margin-bottom:12px;background:var(--surface-2)">
             <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
-              <div style="font-weight:700">#{{{{t.id}}}} · {{{{t.title}}}} <span class="small">({format_status(t.status)})</span></div>
-              {{% if t.status != 'concluida' %}}
-              <form method="post" action="{{{{url_for('mark_task_complete')}}}}">
-                <input type="hidden" name="task_id" value="{{{{t.id}}}}" />
+              <div style="font-weight:700">#{{t.id}} · {{t.title}} <span class="small">({{format_status(t.status)}})</span></div>
+              {% if t.status != 'concluida' %}
+              <form method="post" action="{{url_for('mark_task_complete')}}">
+                <input type="hidden" name="task_id" value="{{t.id}}" />
                 <button class="btn" type="submit">✔ Concluir</button>
               </form>
-              {{% else %}}
+              {% else %}
               <div class="small">Concluída</div>
-              {{% endif %}}
+              {% endif %}
             </div>
-            <div class="small" style="white-space:pre-wrap;margin-top:6px;">{{{{t.description or '-'}}}}</div>
-            <div class="small" style="margin-top:6px;">Venc: {{{{t.due_date or '-'}}}}</div>
+            <div class="small" style="white-space:pre-wrap;margin-top:6px;">{{t.description or '-'}}</div>
+            <div class="small" style="margin-top:6px;">Venc: {{t.due_date or '-'}}</div>
           </div>
-        {{% endfor %}}
-      {{% else %}}
+        {% endfor %}
+      {% else %}
         <div style="text-align:center;color:var(--muted);">Nenhuma tarefa pendente 👌</div>
-      {{% endif %}}
+      {% endif %}
     </div>
   </div>
   <script>applyThemeToggle('toggleUser');</script>
 </body></html>
 """
-    return render_template_string(TPL_USER, user=u, tasks=tasks, format_status=format_status)
+    return render_template_string(
+        TPL_USER, user=u, tasks=tasks, format_status=format_status,
+        theme_css=THEME_CSS, theme_js=THEME_JS
+    )
 
 @app.route("/task/complete", methods=["POST"])
 def mark_task_complete():
@@ -901,7 +921,6 @@ def api_add_observation():
     if not (username and task_id.isdigit() and message):
         return jsonify({"error": "bad_request", "details": "username, task_id ou message ausente"}), 400
 
-    # Garante que o usuário existe para o log (tratando capitalização)
     search_username = username.strip()
     if search_username.lower() != 'admin':
         search_username = search_username.capitalize()
@@ -914,17 +933,23 @@ def api_add_observation():
     if not t:
         return jsonify({"error": "task_not_found"}), 404
         
-    # Adicionar o log/observação
-    # Status 'observation' para logs de chat da extensão
     lg = TaskLog(task_id=t.id, host_id=user.username, status="observation", message=message)
     db.session.add(lg)
     db.session.commit()
     
-    # Notificar o usuário (se estiver em outro lugar) e o admin
     target_username = t.assigned_to.username if t.assigned_to else "admin"
     sse_publish(target_username, {"type": "new_observation", "task_id": t.id, "message": message, "user": user.username})
     if target_username != "admin":
         sse_publish("admin", {"type": "new_observation", "task_id": t.id, "message": message, "user": user.username})
+
+    payload = {
+        "id": t.id,
+        "title": f"[OBS] Nova interação na tarefa #{t.id}",
+        "description": (message or "")[:280],
+        "status": t.status,
+        "due_date": t.due_date.isoformat() if t.due_date else None
+    }
+    sse_publish(target_username, {"type": "alert", "task": payload})
 
     return jsonify({"ok": True, "task_id": t.id})
 
@@ -979,9 +1004,9 @@ def api_calendar_events():
         events.append({
             "id": t.id,
             "title": f"{t.title} ({t.assigned_to.username if t.assigned_to else '-'})",
-            "start": t.due_date.isoformat(),
+            "start": t.due_date.strftime("%Y-%m-%dT%H:%M:%S"),
             "url": url_for("edit_task_form", task_id=t.id),
-            "status": t.status, 
+            "status": t.status,
         })
     return jsonify(events)
 
@@ -989,194 +1014,11 @@ def api_calendar_events():
 def calendar_view():
     if not require_login():
         return redirect(url_for("login"))
-
     u = current_user()
     admin = is_admin()
-    username_filter = None if admin else (u.username if u else None)
     users_list = User.query.order_by(User.username.asc()).all() if admin else []
-
-    def user_options():
-        if not admin:
-            return '<option value="">(somente suas tarefas)</option>'
-        opts = ['<option value="">-- (não atribuída) --</option>']
-        for usr in users_list:
-            opts.append(f'<option value="{usr.id}">{usr.username}</option>')
-        return "\n".join(opts)
-
-    html = f"""<!DOCTYPE html>
-<html lang="pt-BR"><head><meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Calendário • Tarefas</title>
-<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/locales-all.global.min.js"></script>
-<style>{THEME_CSS}</style>
-{THEME_JS}
-</head>
-<body>
-  <div class="container">
-    <div class="topbar">
-      <div>
-        <div class="title">Calendário de Tarefas</div>
-        <div class="small">Clique em um dia para criar uma tarefa</div>
-      </div>
-      <div class="top-right">
-        <div>Usuário: <b>{u.username if u else '-'}</b> ({u.role if u else '-'})</div>
-        <div class="top-links">
-          {"<a href='" + url_for('dashboard') + "'>Painel</a>" if admin else ""}
-          <a href="{url_for('logout')}">Sair</a>
-        </div>
-        <button id="toggleCal" class="btn-theme"><span class="icon">🌙</span> <span class="label">Black</span></button>
-      </div>
-    </div>
-
-    <div id="calendar" class="card"></div>
-
-    <div class="card" style="margin-top:16px; display:flex; gap:16px; justify-content:center; flex-wrap:wrap;">
-        <div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:4px;background-color:#f44336;border:1px solid var(--stroke);"></span> Pendente</div>
-        <div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:4px;background-color:#ff9800;border:1px solid var(--stroke);"></span> Em andamento</div>
-        <div style="display:flex;align-items:center;gap:6px;"><span style="width:14px;height:14px;border-radius:4px;background-color:#4caf50;border:1px solid var(--stroke);"></span> Concluída</div>
-    </div>
-    
-    <div id="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9999">
-      <div class="card" style="width:94%;max-width:520px;">
-        <h3 style="margin-top:0">Criar tarefa</h3>
-        <form id="createForm">
-          <label>Título</label>
-          <input name="title" id="f_title" required />
-          <label>Descrição</label>
-          <textarea name="description" id="f_desc"></textarea>
-          {"<label>Atribuir a</label><select name='assigned_to_id' id='f_user'>" + user_options() + "</select>" if admin else ""}
-          <label>Status</label>
-          <select name="status" id="f_status">
-            <option value="pendente">Pendente</option>
-            <option value="em_andamento">Em andamento</option>
-            <option value="concluida">Concluída</option>
-          </select>
-          <label>Data e hora</label>
-          <input type="datetime-local" name="due_date" id="f_due" required />
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
-            <button type="button" class="btn-theme" id="cancelBtn">Cancelar</button>
-            <button type="submit" class="btn">Criar</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-
-<script>
-applyThemeToggle('toggleCal');
-
-(function(){{
-  const admin = {str(admin).lower()};
-  const usernameFilter = {json.dumps(username_filter)};
-
-  function toLocalInputValue(iso) {{
-    const d = new Date(iso);
-    const p = n => n<10 ? "0"+n : ""+n;
-    return `${{d.getFullYear()}}-${{p(d.getMonth()+1)}}-${{p(d.getDate())}}T${{p(d.getHours())}}:${{p(d.getMinutes())}}`;
-  }}
-
-  const el = document.getElementById('calendar');
-  const calendar = new FullCalendar.Calendar(el, {{
-    locale: 'pt-br',
-    initialView: 'dayGridMonth',
-    timeZone: 'local',
-    headerToolbar: {{
-      left: 'prev,next today',
-      center: 'title',
-      right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
-    }},
-    navLinks: true,
-    selectable: true,
-    editable: false,
-    eventTimeFormat: {{ hour: '2-digit', minute: '2-digit', meridiem: false }},
-    events: function(info, success, failure) {{
-      const params = new URLSearchParams();
-      params.set('start', info.startStr);
-      params.set('end', info.endStr);
-      if (usernameFilter) params.set('assigned_to', usernameFilter);
-      fetch('/api/calendar_events?' + params.toString(), {{ cache: 'no-store' }})
-        .then(r => r.json())
-        .then(data => {{
-            const colored = data.map(ev => {{
-                let cls = 'pendente';
-                if (ev.status === 'em_andamento') cls = 'em_andamento';
-                else if (ev.status === 'concluida') cls = 'concluida';
-                return {{ ...ev, classNames: [cls] }}; 
-            }});
-            success(colored);
-        }})
-        .catch(err => failure(err));
-    }},
-    dateClick: function(info) {{
-      openModal(info.dateStr);
-    }},
-    eventClick: function(info) {{
-      if (info.event.url) {{
-        window.open(info.event.url, '_blank');
-        info.jsEvent.preventDefault();
-      }}
-    }}
-  }});
-  calendar.render();
-
-  const sseUser = {('"admin"' if is_admin() else ('"' + (u.username if u else '') + '"'))};
-  if (sseUser) {{
-    try {{
-      let sseUsername = sseUser.replaceAll('\"', '');
-      if (sseUsername.toLowerCase() !== 'admin') {{
-          sseUsername = sseUsername.trim().replace(/\\b\\w/g, l => l.toUpperCase());
-      }}
-      
-      const es = new EventSource('/api/stream?username=' + encodeURIComponent(sseUsername));
-      es.addEventListener('task', function() {{
-        calendar.refetchEvents();
-      }});
-    }} catch (e) {{}}
-  }}
-
-  // Modal
-  const backdrop = document.getElementById('backdrop');
-  const fTitle = document.getElementById('f_title');
-  const fDesc  = document.getElementById('f_desc');
-  const fDue   = document.getElementById('f_due');
-  const fForm  = document.getElementById('createForm');
-  const cancelBtn = document.getElementById('cancelBtn');
-  const fUser = document.getElementById('f_user'); // null se não admin
-  const fStatus = document.getElementById('f_status');
-
-  function openModal(dayStr) {{
-    const base = new Date(dayStr);
-    base.setHours(9,0,0,0);
-    fDue.value = toLocalInputValue(base.toISOString());
-    fTitle.value = "";
-    fDesc.value = "";
-    if (fUser) fUser.value = "";
-    fStatus.value = "pendente";
-    backdrop.style.display = "flex";
-    setTimeout(()=>fTitle.focus(), 50);
-  }}
-  function closeModal(){{ backdrop.style.display = "none"; }}
-  cancelBtn.addEventListener('click', closeModal);
-  backdrop.addEventListener('click', (e) => {{ if (e.target === backdrop) closeModal(); }});
-
-  fForm.addEventListener('submit', async (e) => {{
-    e.preventDefault();
-    const data = new FormData(fForm);
-    try {{
-      const resp = await fetch('/task/create', {{ method: 'POST', body: data }});
-      if (!resp.ok) throw new Error('Falha ao criar tarefa');
-      closeModal();
-      calendar.refetchEvents();
-    }} catch(err) {{
-      alert('Erro: ' + err.message);
-    }}
-  }});
-}})();
-</script>
-</body></html>"""
-    return html
+    # Renderiza template externo em templates/calendar.html
+    return render_template("calendar.html", user=u, is_admin=admin, users=users_list)
 
 # =============================
 # HEALTH / UTILS
@@ -1188,7 +1030,7 @@ def health():
 @app.after_request
 def add_cors_headers(resp):
     resp.headers['Access-Control-Allow-Origin'] = '*'
-    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Panel-Token'
     resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     return resp
 
@@ -1204,4 +1046,5 @@ def internal_error(e):
 if __name__ == "__main__":
     with app.app_context():
         init_db()
+    print(f"DB em: {db_path}")
     app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)

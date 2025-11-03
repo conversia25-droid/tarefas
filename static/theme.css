@@ -1,25 +1,64 @@
 /* static/theme.css — tema compartilhado (light/black) + estilos base */
 
 :root[data-theme="light"]{
-  --bg:#ffffff; --surface:#ffffff; --surface-2:#f7f8fa;
-  --text:#111; --muted:#666; --stroke:#e8eaee; --shadow:rgba(0,0,0,.06);
-  --button:#111; --button-text:#fff; --chip:#f2f4f7; --chip-text:#333;
+  --bg:#ffffff; 
+  --surface:#ffffff; 
+  --surface-2:#f7f8fa;
+  --text:#111; 
+  --muted:#666; 
+  --stroke:#e8eaee; 
+  --shadow:rgba(0,0,0,.06);
+  --button:#111; 
+  --button-text:#fff; 
+  --chip:#f2f4f7; 
+  --chip-text:#333;
 }
+
 :root[data-theme="dark"]{
-  --bg:#0b0f14; --surface:#11161d; --surface-2:#0f141b;
-  --text:#fff; --muted:#9ba4b0; --stroke:#1f2733; --shadow:rgba(0,0,0,.5);
-  --button:#e6e6e6; --button-text:#111; --chip:#1b2330; --chip-text:#d7dfeb;
+  --bg:#0b0f14; 
+  --surface:#11161d; 
+  --surface-2:#0f141b;
+  --text:#fff; 
+  --muted:#9ba4b0; 
+  --stroke:#1f2733; 
+  --shadow:rgba(0,0,0,.5);
+  --button:#e6e6e6; 
+  --button-text:#111; 
+  --chip:#1b2330; 
+  --chip-text:#d7dfeb;
 }
 
-html,body{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);
+/* ---------- Estrutura base ---------- */
+html,body{
+  height:100%;
+}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  transition:background .2s ease,color .2s ease;}
+  transition:background .2s ease,color .2s ease;
+}
 
-.container{max-width:1160px;margin:24px auto 40px;padding:0 16px;}
-.topbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
-  background:var(--surface);border:1px solid var(--stroke);border-radius:12px;padding:12px 16px;
-  box-shadow:0 10px 30px var(--shadow);}
+.container{
+  max-width:1160px;
+  margin:24px auto 40px;
+  padding:0 16px;
+}
+
+.topbar{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  background:var(--surface);
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  padding:12px 16px;
+  box-shadow:0 10px 30px var(--shadow);
+}
+
 .title{font-weight:700;letter-spacing:.2px}
 .top-right{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:.9rem}
 .top-right b{color:var(--text)}
@@ -28,7 +67,7 @@ body{margin:0;background:var(--bg);color:var(--text);
 .card{background:var(--surface);border:1px solid var(--stroke);border-radius:12px;box-shadow:0 10px 30px var(--shadow);padding:16px}
 label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px}
 input,textarea,select{width:100%;background:var(--surface-2);border:1px solid var(--stroke);border-radius:10px;padding:10px 12px;font-size:.9rem;color:var(--text);outline:none}
-input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(100,150,250,.18)}
+input:focus,textarea:focus,select:focus{box-shadow:0 0 0 3px rgba(100,150,250,0.18)}
 .btn{background:var(--button);color:var(--button-text);border:none;border-radius:10px;padding:10px 12px;font-weight:700;cursor:pointer}
 .table-wrap{overflow:auto;border:1px solid var(--stroke);border-radius:10px;background:var(--surface-2)}
 table{width:100%;border-collapse:collapse;min-width:760px}
@@ -37,12 +76,132 @@ td{padding:10px 12px;border-bottom:1px solid var(--stroke);vertical-align:top}
 .pill{background:var(--chip);color:var(--chip-text);padding:6px 8px;border-radius:8px;font-size:.8rem}
 .small{font-size:.8rem;color:var(--muted)}
 
-/* FullCalendar adapta ao tema */
-#calendar{background:var(--surface);border:1px solid var(--stroke);border-radius:12px;box-shadow:0 10px 30px var(--shadow);padding:10px}
-.fc .fc-toolbar-title{color:var(--text);font-weight:800}
-.fc-theme-standard .fc-scrollgrid, .fc-theme-standard td, .fc-theme-standard th{border-color:var(--stroke)}
-.fc .fc-button{border-radius:10px;border:1px solid var(--stroke);background:var(--surface-2);color:var(--text)}
-.fc .fc-button-primary:not(:disabled).fc-button-active, .fc .fc-button-primary:not(:disabled):active{
-  background:var(--surface);border-color:var(--stroke);color:var(--text)}
-.fc .fc-col-header-cell-cushion, .fc .fc-daygrid-day-number, .fc .fc-list-day-text, .fc .fc-list-day-side-text{color:var(--text)}
-.fc .fc-daygrid-event, .fc .fc-timegrid-event{background:var(--chip);color:var(--chip-text);border:1px solid var(--stroke)}
+/* ---------- FullCalendar adaptação ---------- */
+#calendar{
+  background:var(--surface);
+  border:1px solid var(--stroke);
+  border-radius:12px;
+  box-shadow:0 10px 30px var(--shadow);
+  padding:10px;
+}
+.fc .fc-toolbar-title{
+  color:var(--text);
+  font-weight:800;
+}
+.fc-theme-standard .fc-scrollgrid,
+.fc-theme-standard td,
+.fc-theme-standard th{
+  border-color:var(--stroke);
+}
+.fc .fc-button{
+  border-radius:10px;
+  border:1px solid var(--stroke);
+  background:var(--surface-2);
+  color:var(--text);
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active{
+  background:var(--surface);
+  border-color:var(--stroke);
+  color:var(--text);
+}
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number,
+.fc .fc-list-day-text,
+.fc .fc-list-day-side-text{
+  color:var(--text);
+}
+
+/* ---------- Estilo padrão do evento ---------- */
+.fc .fc-daygrid-event,
+.fc .fc-timegrid-event{
+  background:var(--chip);
+  color:var(--chip-text);
+  border:1px solid var(--stroke);
+}
+
+/* ============================================================
+   🎨 CORREÇÃO FINAL — SOMENTE O DOT COLORIDO, TEXTO PRETO
+   ============================================================ */
+
+/* Remove fundo e borda, deixa texto preto */
+.fc .fc-daygrid-event,
+.fc .fc-timegrid-event {
+  background: transparent !important;
+  border: none !important;
+  color: var(--text) !important;
+}
+
+/* Define as cores do DOT (pontinho) por status */
+.fc-event.pendente {
+  --fc-event-dot-color: #f44336 !important; /* vermelho */
+}
+.fc-event.em_andamento {
+  --fc-event-dot-color: #ff9800 !important; /* laranja */
+}
+.fc-event.concluida {
+  --fc-event-dot-color: #4caf50 !important; /* verde */
+}
+
+/* Aplica a cor do DOT */
+.fc-daygrid-dot-event .fc-event-dot {
+  border-color: var(--fc-event-dot-color) !important;
+  background: var(--fc-event-dot-color) !important;
+}
+.fc-list-event-dot {
+  border-color: var(--fc-event-dot-color) !important;
+  background: var(--fc-event-dot-color) !important;
+}
+
+/* Mantém o texto legível */
+.fc-event-title,
+.fc-event-time {
+  color: var(--text) !important;
+}
+/* Texto dos eventos sempre preto (ou var(--text) do tema) */
+.fc .fc-daygrid-event .fc-event-time,
+.fc .fc-daygrid-event .fc-event-title,
+.fc .fc-timegrid-event .fc-event-time,
+.fc .fc-timegrid-event .fc-event-title {
+  color: var(--text) !important;
+}
+
+/* Garante que não haja fundo/borda cinza no “cartão” do evento */
+.fc .fc-daygrid-event,
+.fc .fc-timegrid-event {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 1) Define a variável de cor do DOT por status no próprio .fc-event */
+.fc .fc-event.pendente     { --fc-event-dot-color: #f44336 !important; } /* vermelho */
+.fc .fc-event.em_andamento { --fc-event-dot-color: #ff9800 !important; } /* laranja */
+.fc .fc-event.concluida    { --fc-event-dot-color: #4caf50 !important; } /* verde */
+
+/* 2) Aplica a cor no DOT (dayGrid e list views) usando a variável acima */
+.fc .fc-event .fc-event-dot,
+.fc .fc-list-event-dot {
+  background: var(--fc-event-dot-color, #3788d8) !important;
+  border-color: var(--fc-event-dot-color, #3788d8) !important;
+}
+
+/* 3) (extra) Se a estrutura for .fc-daygrid-event-dot em vez de .fc-event-dot */
+.fc .fc-daygrid-event .fc-daygrid-event-dot {
+  background: var(--fc-event-dot-color, #3788d8) !important;
+  border-color: var(--fc-event-dot-color, #3788d8) !important;
+}
+
+/* 4) (fallback ultra específico) Caso algum estilo esteja vencendo a cascata */
+.fc .fc-daygrid-dot-event.fc-event.pendente .fc-event-dot,
+.fc .fc-timegrid-event.fc-event.pendente .fc-event-dot {
+  background: #f44336 !important; border-color: #f44336 !important;
+}
+.fc .fc-daygrid-dot-event.fc-event.em_andamento .fc-event-dot,
+.fc .fc-timegrid-event.fc-event.em_andamento .fc-event-dot {
+  background: #ff9800 !important; border-color: #ff9800 !important;
+}
+.fc .fc-daygrid-dot-event.fc-event.concluida .fc-event-dot,
+.fc .fc-timegrid-event.fc-event.concluida .fc-event-dot {
+  background: #4caf50 !important; border-color: #4caf50 !important;
+}
