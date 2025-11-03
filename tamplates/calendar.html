@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calendário de Tarefas</title>
+
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/locales-all.global.min.js"></script>
+
+  <!-- Tema externo -->
+  <link rel="stylesheet" href="/static/theme.css">
+  <script src="/static/theme.js"></script>
+
+  <style>
+    /* Cores específicas por status */
+    .fc-event.pendente { background-color: #f44336 !important; color: white !important; border: none; }
+    .fc-event.em_andamento { background-color: #ff9800 !important; color: white !important; border: none; }
+    .fc-event.concluida { background-color: #4caf50 !important; color: white !important; border: none; }
+
+    /* Legenda */
+    .legenda {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      align-items: center;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .legenda-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .cor {
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      border: 1px solid var(--stroke);
+    }
+    .cor.vermelho { background-color: #f44336; }
+    .cor.laranja { background-color: #ff9800; }
+    .cor.verde { background-color: #4caf50; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <div class="title">Calendário de Tarefas</div>
+        <div class="small">Clique em um dia para criar uma tarefa</div>
+      </div>
+      <div class="top-right">
+        <div class="top-links">
+          <a href="/dashboard">Painel</a>
+          <a href="/logout">Sair</a>
+        </div>
+        <button id="toggleCal" class="btn-theme">
+          <span class="icon">🌙</span> <span class="label">Black</span>
+        </button>
+      </div>
+    </div>
+
+    <div id="calendar" class="card"></div>
+
+    <!-- Legenda -->
+    <div class="legenda card">
+      <div class="legenda-item"><span class="cor vermelho"></span> Pendente</div>
+      <div class="legenda-item"><span class="cor laranja"></span> Em andamento</div>
+      <div class="legenda-item"><span class="cor verde"></span> Concluída</div>
+    </div>
+  </div>
+
+  <script>
+    applyThemeToggle('toggleCal');
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const el = document.getElementById('calendar');
+
+      const calendar = new FullCalendar.Calendar(el, {
+        locale: 'pt-br', // 🇧🇷 Tudo em português
+        buttonText: {
+          today: 'Hoje',
+          month: 'Mês',
+          week: 'Semana',
+          day: 'Dia',
+          list: 'Agenda'
+        },
+        initialView: 'dayGridMonth',
+        timeZone: 'local',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+        },
+        navLinks: true,
+        selectable: true,
+        editable: false,
+        eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
+
+        events: function(info, success, failure) {
+          fetch(`/api/calendar_events?start=${info.startStr}&end=${info.endStr}`, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+              // 🎨 Atribui classe por status para colorir via CSS
+              const colored = data.map(ev => {
+                let cls = 'pendente';
+                if (ev.status === 'em_andamento') cls = 'em_andamento';
+                else if (ev.status === 'concluida') cls = 'concluida';
+                return { ...ev, classNames: [cls] }; // <- correção do spread
+              });
+              success(colored);
+            })
+            .catch(err => failure(err));
+        },
+
+        dateClick: function(info) {
+          alert("Clique em " + info.dateStr + " — (aqui você pode abrir seu modal de criação)");
+        },
+
+        eventClick: function(info) {
+          if (info.event.url) {
+            window.open(info.event.url, '_blank');
+            info.jsEvent.preventDefault();
+          }
+        }
+      });
+
+      calendar.render();
+
+      // 🔁 Atualização automática se houver SSE ativo
+      try {
+        const es = new EventSource('/api/stream?username=admin');
+        es.addEventListener('task', () => calendar.refetchEvents());
+      } catch(e) {}
+    });
+  </script>
+</body>
+</html>
